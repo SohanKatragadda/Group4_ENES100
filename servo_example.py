@@ -2,7 +2,7 @@ from machine import Pin
 from time import sleep_ms
 from OTV_Lib import Servo
 
-servo = Servo(Pin(23))
+servo = Servo(23)
 
 try:
     while True:

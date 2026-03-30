@@ -1,6 +1,7 @@
 from machine import Pin, PWM
 from sys import platform
 from micropython import const
+from time import sleep_us, ticks_ms
 import math
 import time
 import machine
@@ -11,8 +12,8 @@ platform_duty_funcs = {const('esp8266'):PWM.duty, const('esp32'):PWM.duty_u16}
 duty_func = platform_duty_funcs[platform]
 
 class Servo:
-    def __init__(self, servo_pin: Pin, min_pulse_width_ns: int = 500, max_pulse_width_ns: int = 2500, frequency: int = 50):
-        self.servo = PWM(servo_pin)
+    def __init__(self, servo_pin: int, min_pulse_width_ns: int = 500, max_pulse_width_ns: int = 2500, frequency: int = 50):
+        self.servo = PWM(Pin(servo_pin))
         self.servo.freq(frequency)
         self.servo_min_duty = (int) (max_duty * min_pulse_width_ns / (1000000/frequency))
         self.servo_max_duty = (int) (max_duty * max_pulse_width_ns / (1000000/frequency))
@@ -135,3 +136,119 @@ class HCSR04:
         # 0.034320 cm/us that is 1cm each 29.1us
         cms = (pulse_time / 2) / 29.1
         return cms
+
+# Adapted from https://grzesina.de/az/waage/hx711.py
+class DeviceNotReady(Exception):
+    def __init__(self):
+        print("Error\nHX711 is not responding.")
+    
+class HX711(DeviceNotReady):
+    selA128 = const(1)
+    selB32 = const(2)
+    selA64 = const(3)
+    Dbits = const(24)
+    MaxVal = const(0x7FFFFF)
+    MinVal = const(0x800000)
+    Frame = const(1<<Dbits)
+    ReadyDelay = const(3000) # ms
+    WaitSleep = const(60) # us
+    ChannelGain = {
+        1:("A",128),
+        2:("B",32),
+        3:("A",64)
+        }
+    CalibrationFactor = 1104
+    
+    def __init__(self, dOut: int, pdSck: int, ch:int = selA128):
+        self.data = Pin(dOut)
+        self.data.init(mode = self.data.IN)
+        self.clk = Pin(pdSck)
+        self.clk.init(mode=self.clk.OUT, value=0)
+        self.chan = ch
+        self.tareVal = 0
+        self.cal = HX711.CalibrationFactor
+        self.waitReady()
+        k,g = HX711.ChannelGain[ch]
+        print("HX711 ready on channel {} with gain {}".format(k,g))
+        
+    def Timeout(self, t):
+        start = ticks_ms()
+        def compare():
+            return int(ticks_ms()-start) >= t
+        return compare
+    
+    def isDeviceReady(self):
+        return self.data.value() == 0
+    
+    def waitReady(self):
+        delayOver = self.Timeout(ReadyDelay)
+        while not self.isDeviceReady():
+            if delayOver():
+                raise DeviceNotReady()
+            
+    def convertResult(self,val):
+        if val & MinVal:
+            val -= Frame
+        return val
+    
+    def clock(self):
+        self.clk.value(1)
+        self.clk.value(0)
+        
+    def channel(self, ch=None):
+        if ch is None:
+            ch,gain = HX711.ChannelGain[self.chan]
+            return ch,gain
+        else:
+            assert ch in [1,2,3], "Bad channel number: {}\nValid channels are 1, 2, and 3".format(ch)
+            self.chan = ch
+            if not self.isDeviceReady():
+                self.waitReady()
+            for n in range(Dbits + ch):
+                self.clock()
+                
+    def getRaw(self, conv=True):
+        if not self.isDeviceReady():
+            self.waitReady()
+        raw = 0
+        for b in range(Dbits - 1):
+            self.clock()
+            raw = (raw | self.data.value()) << 1
+        self.clock()
+        raw = raw | self.data.value()
+        for b in range(self.chan):
+            self.clock()
+        if conv:
+            return self.convertResult(raw)
+        else:
+            return raw
+        
+    def mean(self, n:int):
+        s = 0
+        for i in range(n):
+            s += self.getRaw()
+        return int(s/n)
+    
+    def tare(self, n:int):
+        self.tareVal = self.mean(n)
+        return self.tareVal
+
+    def mass(self, n:int):
+        g = (self.mean(n) - self.tareVal) / self.cal
+        return g
+    
+    def calFactor(self, f=None):
+        if f is not None:
+            self.cal = f
+        else:
+            return self.cal
+        
+    def wake(self):
+        self.clk.value(0)
+        self.channel(self.chan)
+        
+    def sleep(self):
+        self.clk.value(0)
+        self.clk.value(1)
+        sleep_us(WaitSleep)
+        
