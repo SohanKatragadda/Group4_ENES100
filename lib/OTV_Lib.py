@@ -143,6 +143,28 @@ class DeviceNotReady(Exception):
         print("Error\nHX711 is not responding.")
     
 class HX711(DeviceNotReady):
+    """
+    Create a HX711 object in main class using (dataPin, clockPin, channel (use 1 for most things)
+    
+    Then Tare using the following code. Make sure nothing expect for the plate is on the Sensors
+    
+    print("Taring (20 samples) ...")
+    scale.tare(20)
+    print("Tare value: {}".format(scale.tareVal))
+    
+    if you want to calibrate it use the following code. Make sure you have a known weight to calibrate it with
+    
+    known_g = x  # change to your actual weight in grams
+
+    raw = scale.mean(20)
+    factor = (raw - scale.tareVal) / known_g
+    scale.calFactor(factor)
+
+    print(f"Cal factor set to: {factor:.4f}")
+    print(f"Measured mass: {scale.mass(10):.2f} g")
+    
+    """
+    
     selA128 = const(1)
     selB32 = const(2)
     selA64 = const(3)
@@ -157,9 +179,11 @@ class HX711(DeviceNotReady):
         2:("B",32),
         3:("A",64)
         }
-    CalibrationFactor = 1104
+    CalibrationFactor = 23.5477
     
     def __init__(self, dOut: int, pdSck: int, ch:int = selA128):
+        """START HERE"""
+        
         self.data = Pin(dOut)
         self.data.init(mode = self.data.IN)
         self.clk = Pin(pdSck)
