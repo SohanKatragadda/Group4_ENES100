@@ -154,14 +154,8 @@ class HX711(DeviceNotReady):
     
     if you want to calibrate it use the following code. Make sure you have a known weight to calibrate it with
     
-    known_g = x  # change to your actual weight in grams
-
-    raw = scale.mean(20)
-    factor = (raw - scale.tareVal) / known_g
-    scale.calFactor(factor)
-
-    print(f"Cal factor set to: {factor:.4f}")
-    print(f"Measured mass: {scale.mass(10):.2f} g")
+    calWeight(known Weight in grams)
+    this automatically sets calFactor
     
     """
     
@@ -176,10 +170,14 @@ class HX711(DeviceNotReady):
     WaitSleep = const(60) # us
     ChannelGain = {
         1:("A",128),
-        2:("B",32),
+        2:("B",32), #dont use
         3:("A",64)
         }
-    CalibrationFactor = 23.5477
+    CalibrationFactors = {
+        1: 27.484726,
+        2: 1, #cooked, dont use channel b
+        3: 13.345454,
+        }
     
     def __init__(self, dOut: int, pdSck: int, ch:int = selA128):
         """START HERE"""
@@ -190,7 +188,7 @@ class HX711(DeviceNotReady):
         self.clk.init(mode=self.clk.OUT, value=0)
         self.chan = ch
         self.tareVal = 0
-        self.cal = HX711.CalibrationFactor
+        self.cal = HX711.CalibrationFactors[ch]
         self.waitReady()
         k,g = HX711.ChannelGain[ch]
         print("HX711 ready on channel {} with gain {}".format(k,g))
@@ -267,6 +265,17 @@ class HX711(DeviceNotReady):
         else:
             return self.cal
         
+    def calWeight(self, known_g):
+        
+        input("Place known weight on scale, then press Enter...")
+
+        raw = self.mean(20)
+        factor = (raw - self.tareVal) / known_g
+        self.calFactor(factor)
+
+        print(f"Cal factor set to: {factor:.4f}")
+        print(f"Measured mass: {self.mass(10):.2f} g")
+        
     def wake(self):
         self.clk.value(0)
         self.channel(self.chan)
@@ -276,3 +285,4 @@ class HX711(DeviceNotReady):
         self.clk.value(1)
         sleep_us(WaitSleep)
         
+
