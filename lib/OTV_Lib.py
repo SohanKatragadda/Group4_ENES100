@@ -50,14 +50,14 @@ class Motor:
         self.forward_pin.value(1)
         self.reverse_pin.value(0)
         self.speed_percent = speed_percent
-        duty_func(self.pwm, max_duty * speed_percent / 100)
+        duty_func(self.pwm, (max_duty * speed_percent) // 100)
         
     def reverse(self, speed_percent: float):
         self.forward_pin.value(0)
         self.reverse_pin.value(1)
         self.speed_percent = speed_percent
         duty_func(max_duty * speed_percent / 100)
-        duty_func(self.pwm, max_duty * speed_percent / 100)
+        duty_func(self.pwm, (max_duty * speed_percent) // 100)
         
     def brake(self):
         self.forward_pin.value(1)
