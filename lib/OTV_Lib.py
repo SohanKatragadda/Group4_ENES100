@@ -47,11 +47,11 @@ class Motor:
         # Set Forward Pin
         self.forward_pin = forward_pin
         self.forward_pin.off()
-        self.forward_pin.init(mode=Pin.OUT)
+        self.forward_pin.init(mode=self.forward_pin.OUT)
         # Set Reverse Pin
         self.reverse_pin = reverse_pin
         self.reverse_pin.off()
-        self.reverse_pin.init(mode=Pin.OUT)
+        self.reverse_pin.init(mode=self.reverse_pin.OUT)
     
     def forward(self, speed_percent: float):
         self.forward_pin.value(1)
@@ -292,7 +292,7 @@ class HX711(DeviceNotReady):
         sleep_us(WaitSleep)
         
 class Drivetrain:
-    w_diam_mm = const(48)
+    w_circumference_mm = const(150.796447372)
     otv_radius_mm = const(172.44243)
     motor_rotations_per_ms = const(0.00085)
     default_motor_speed = const(100.0)
@@ -302,6 +302,11 @@ class Drivetrain:
         self.w3 = w3
 
     def normalize_speeds(self, w1_speed: float, w2_speed: float, w3_speed: float):
+        """
+        Wheel 1 is the front left wheel
+        Wheel 2 is the front right wheel
+        Wheel 3 is the rear wheel
+        """
         if w1_speed > 0:
             self.w1.forward(w1_speed)
         elif w1_speed < 0:
@@ -327,11 +332,17 @@ class Drivetrain:
             speed = -speed
             dist = -dist
             
-        rotations = (dist*otv_radius_mm) / (math.pi*w_diam_mm)
-        normalize_speeds(speed, speed, speed)
+        rotations = (dist*otv_radius_mm) / w_circumference_mm
+        self.normalize_speeds(speed, speed, speed)
         time.sleep_ms(rotations//motor_rotations_per_ms)
         self.w1.brake()
         self.w2.brake()
         self.w3.brake()
-        
+    
+    def forward(self, dist_mm: float, speed: float = default_motor_speed):
+        rotations = dist_mm / (const(0.86602540378) * w_circumference_mm)
+        self.normalize_speeds(-speed, speed, 0)
+        time.sleep_ms(rotations//motor_rotations_per_ms)
+        self.w1.brake()
+        self.w2.brake()
     
