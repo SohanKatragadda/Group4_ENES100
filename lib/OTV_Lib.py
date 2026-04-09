@@ -40,15 +40,18 @@ class Servo:
         
 class Motor:
     def __init__(self, speed_pin: Pin, forward_pin: Pin, reverse_pin: Pin, speed_percent: float = 0.0, frequency: int = 1000):
+        # Set PWM
         self.pwm = PWM(speed_pin)
         self.pwm.freq(frequency)
+        self.speed_percent = speed_percent
+        # Set Forward Pin
         self.forward_pin = forward_pin
         self.forward_pin.off()
         self.forward_pin.init(mode=Pin.OUT)
+        # Set Reverse Pin
         self.reverse_pin = reverse_pin
         self.reverse_pin.off()
         self.reverse_pin.init(mode=Pin.OUT)
-        self.speed_percent = speed_percent
     
     def forward(self, speed_percent: float):
         self.forward_pin.value(1)
@@ -288,4 +291,47 @@ class HX711(DeviceNotReady):
         self.clk.value(1)
         sleep_us(WaitSleep)
         
+class Drivetrain:
+    w_diam_mm = const(48)
+    otv_radius_mm = const(172.44243)
+    motor_rotations_per_ms = const(0.00085)
+    default_motor_speed = const(100.0)
+    def __init__(self, w1: Motor, w2: Motor, w3: Motor):
+        self.w1 = w1
+        self.w2 = w2
+        self.w3 = w3
 
+    def normalize_speeds(self, w1_speed: float, w2_speed: float, w3_speed: float):
+        if w1_speed > 0:
+            self.w1.forward(w1_speed)
+        elif w1_speed < 0:
+            self.w1.reverse(-w1_speed)
+        if w2_speed > 0:
+            self.w2.forward(w1_speed)
+        elif w2_speed < 0:
+            self.w2.reverse(-w2_speed)
+        if w3_speed > 0:
+            self.w3.forward(w3_speed)
+        elif w3_speed < 0:
+            self.w3.reverse(-w3_speed)
+        
+        
+    def turn_deg(self, dist: float = 90.0, speed: float = default_motor_speed):
+        self.turn_rad(math.radians(dist), speed)
+            
+    def turn_rad(self, dist: float = math.pi/2, speed: float = default_motor_speed):
+        """
+        Positive values should turn left, negatives should turn right
+        """
+        if dist < 0:
+            speed = -speed
+            dist = -dist
+            
+        rotations = (dist*otv_radius_mm) / (math.pi*w_diam_mm)
+        normalize_speeds(speed, speed, speed)
+        time.sleep_ms(rotations//motor_rotations_per_ms)
+        self.w1.brake()
+        self.w2.brake()
+        self.w3.brake()
+        
+    
