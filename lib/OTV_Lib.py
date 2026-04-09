@@ -13,7 +13,7 @@ duty_func = platform_duty_funcs[platform]
 
 class Servo:
     def __init__(self, servo_pin: int, min_pulse_width_ns: int = 500, max_pulse_width_ns: int = 2500, frequency: int = 50):
-        self.servo = PWM(Pin(servo_pin))
+        self.servo = PWM(Pin(servo_pin, Pin.OUT))
         self.servo.freq(frequency)
         self.servo_min_duty = (int) (max_duty * min_pulse_width_ns / (1000000/frequency))
         self.servo_max_duty = (int) (max_duty * max_pulse_width_ns / (1000000/frequency))
@@ -39,11 +39,15 @@ class Servo:
         self.servo.deinit()
         
 class Motor:
-    def __init__(self, speed_pin: Pin, forward_pin: Pin, reverse_pin: Pin, speed_percent: float = 0.0, frequency: int = 10000):
+    def __init__(self, speed_pin: Pin, forward_pin: Pin, reverse_pin: Pin, speed_percent: float = 0.0, frequency: int = 1000):
         self.pwm = PWM(speed_pin)
         self.pwm.freq(frequency)
         self.forward_pin = forward_pin
+        self.forward_pin.off()
+        self.forward_pin.init(mode=Pin.OUT)
         self.reverse_pin = reverse_pin
+        self.reverse_pin.off()
+        self.reverse_pin.init(mode=Pin.OUT)
         self.speed_percent = speed_percent
     
     def forward(self, speed_percent: float):
@@ -56,7 +60,6 @@ class Motor:
         self.forward_pin.value(0)
         self.reverse_pin.value(1)
         self.speed_percent = speed_percent
-        duty_func(max_duty * speed_percent / 100)
         duty_func(self.pwm, (max_duty * speed_percent) // 100)
         
     def brake(self):
