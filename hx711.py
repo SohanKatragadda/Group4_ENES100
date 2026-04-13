@@ -11,7 +11,7 @@ DATA_PIN = 25   # GPIO 25
 if __name__ == "__main__":
     print("Reading HX711")
     
-    scale = HX711(DATA_PIN,CLK_PIN, 3)
+    scale = HX711(DATA_PIN,CLK_PIN, 1)
     scale.wake()
 
     print("Taring (20 samples) ...")
