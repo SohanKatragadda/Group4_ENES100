@@ -57,13 +57,13 @@ class Motor:
         self.forward_pin.value(1)
         self.reverse_pin.value(0)
         self.speed_percent = speed_percent
-        duty_func(self.pwm, (max_duty * speed_percent) // 100)
+        duty_func(self.pwm, int(max_duty * speed_percent) // 100)
         
     def reverse(self, speed_percent: float):
         self.forward_pin.value(0)
         self.reverse_pin.value(1)
         self.speed_percent = speed_percent
-        duty_func(self.pwm, (max_duty * speed_percent) // 100)
+        duty_func(self.pwm, int(max_duty * speed_percent) // 100)
         
     def brake(self):
         self.forward_pin.value(1)
@@ -312,7 +312,7 @@ class Drivetrain:
         elif w1_speed < 0:
             self.w1.reverse(-w1_speed)
         if w2_speed > 0:
-            self.w2.forward(w1_speed)
+            self.w2.forward(w2_speed)
         elif w2_speed < 0:
             self.w2.reverse(-w2_speed)
         if w3_speed > 0:
@@ -334,7 +334,7 @@ class Drivetrain:
             
         rotations = (dist*otv_radius_mm) / w_circumference_mm
         self.normalize_speeds(speed, speed, speed)
-        time.sleep_ms(rotations//motor_rotations_per_ms)
+        time.sleep_ms(int(rotations/motor_rotations_per_ms))
         self.w1.brake()
         self.w2.brake()
         self.w3.brake()
@@ -342,7 +342,7 @@ class Drivetrain:
     def forward(self, dist_mm: float, speed: float = default_motor_speed):
         rotations = dist_mm / (const(0.86602540378) * w_circumference_mm)
         self.normalize_speeds(-speed, speed, 0)
-        time.sleep_ms(rotations//motor_rotations_per_ms)
+        time.sleep_ms(int(rotations/motor_rotations_per_ms))
         self.w1.brake()
         self.w2.brake()
     
