@@ -1,0 +1,351 @@
+# ============================================
+# MS6: MAIN MISSION PROGRAM
+# No extra functions - just logic and comments
+# Using pins we can correct later
+# ============================================
+
+from machine import Pin
+from time import sleep_ms, ticks_ms
+import math
+from OTV_Lib import HCSR04, Motor, Drivetrain, Servo, HX711
+from enes100 import Enes100
+
+# ============================================
+# PIN DEFINITIONS (FIX LATER IF WRONG)
+# ============================================
+
+# Motors (3 motors, 2 L298N drivers)
+M1_SPEED_PIN = 8
+M1_FORWARD_PIN = 9
+M1_REVERSE_PIN = 10
+
+M2_SPEED_PIN = 11
+M2_FORWARD_PIN = 12
+M2_REVERSE_PIN = 13
+
+M3_SPEED_PIN = 14
+M3_FORWARD_PIN = 15
+M3_REVERSE_PIN = 16
+
+# Ultrasonic sensors
+TGR_PIN = 17      # Navigation sensor trigger
+ECHO_PIN = 18     # Navigation sensor echo
+TGR2_PIN = 19     # Material sensor trigger (on ramp)
+ECHO2_PIN = 20    # Material sensor echo
+
+# Servo (claw)
+CLAW_PIN = 21
+
+# Load cell (HX711)
+LOAD_DT_PIN = 22
+LOAD_SCK_PIN = 23
+
+# ============================================
+# CONSTANTS YOU MAY NEED TO ADJUST
+# ============================================
+
+# Distance from material sensor to ball when on ramp (in cm)
+# MEASURE THIS ON YOUR ACTUAL ROBOT
+BALL_DISTANCE_CM = 10.0
+
+# Threshold for foam detection (foam = longer return time = higher distance reading)
+# If reading > BALL_DISTANCE_CM + 5, it's foam
+FOAM_THRESHOLD_CM = BALL_DISTANCE_CM + 5
+
+# Movement speeds (0-100%)
+NAV_SPEED = 50      # Speed during navigation
+PUSH_SPEED = 30     # Slow speed for pushing ball onto ramp
+TURN_SPEED = 40     # Speed when turning
+
+# ============================================
+# INITIALIZATION
+# ============================================
+
+print("=" * 50)
+print("OTV INITIALIZATION STARTING")
+print("=" * 50)
+
+# Start Enes100 for position tracking and mission reporting
+# Parameters: (team_name, mission_type, team_id, arena_id)
+Enes100.begin("LebrOTV 'red ruby sunshine' James", 'MATERIALS', 345, 1120)
+print("[ENES100] Connected to tracking system")
+
+# Create ultrasonic sensor for navigation (used to avoid walls and find payload)
+ultrasonic_nav = HCSR04(TGR_PIN, ECHO_PIN, 10000)
+print("[SENSOR] Navigation ultrasonic ready")
+
+# Create ultrasonic sensor for material identification (mounted above ramp)
+# This sensor points DOWN at the ball to measure reflection properties
+ultrasonic_material = HCSR04(TGR2_PIN, ECHO2_PIN, 10000)
+print("[SENSOR] Material ultrasonic ready")
+
+# Create the 3 motor objects
+# Each motor needs: speed_pin, forward_pin, reverse_pin, default_speed
+motor_front_left = Motor(M1_SPEED_PIN, M1_FORWARD_PIN, M1_REVERSE_PIN, 85)
+motor_front_right = Motor(M2_SPEED_PIN, M2_FORWARD_PIN, M2_REVERSE_PIN, 85)
+motor_rear = Motor(M3_SPEED_PIN, M3_FORWARD_PIN, M3_REVERSE_PIN, 85)
+print("[MOTOR] 3 motors initialized")
+
+# Create drivetrain to control all 3 motors together
+# This enables kiwi drive (omnidirectional movement)
+drivetrain = Drivetrain(motor_front_left, motor_front_right, motor_rear)
+print("[DRIVETRAIN] Kiwi drive ready")
+
+# Create servo for the claw mechanism
+# The claw secures the ball AFTER it rolls up the ramp
+claw = Servo(CLAW_PIN)
+print("[SERVO] Claw ready")
+
+# Create load cell scale (HX711 with 4 half-bridge strain gauges)
+# This measures the weight of the payload on the ramp
+scale = HX711(LOAD_DT_PIN, LOAD_SCK_PIN)
+print("[SCALE] Load cell ready")
+
+# ============================================
+# CALIBRATION SEQUENCE
+# ============================================
+
+print("\n--- CALIBRATION PHASE ---")
+
+# Wait for electronics to stabilize
+sleep_ms(1000)
+
+# Calibrate the scale (zero it with nothing on the ramp)
+print("IMPORTANT: Make sure the ramp is completely empty!")
+print("Taring scale in 3 seconds...")
+sleep_ms(3000)
+
+# Tare takes 20 readings and averages them to establish zero point
+scale.tare(20)
+print("[SCALE] Tare complete - scale zeroed")
+
+# Test the claw to make sure it moves correctly
+print("Testing claw movement...")
+claw.write(0)      # 0 degrees = closed position
+sleep_ms(500)
+claw.write(90)     # 90 degrees = open position
+sleep_ms(500)
+claw.write(45)     # Half open
+sleep_ms(500)
+claw.write(90)     # Open again
+print("[SERVO] Claw test complete")
+
+# Test both ultrasonic sensors
+print("\nSensor readings at idle:")
+nav_dist = ultrasonic_nav.distance_cm()
+print(f"  Navigation sensor: {nav_dist:.1f} cm")
+
+material_dist = ultrasonic_material.distance_cm()
+print(f"  Material sensor: {material_dist:.1f} cm")
+
+# ============================================
+# MISSION BEGINS
+# ============================================
+
+print("\n" + "=" * 50)
+print("MISSION START")
+print("=" * 50)
+
+# ------------------------------------------------------------------
+# PHASE 1: NAVIGATE TO PAYLOAD AREA
+# ------------------------------------------------------------------
+print("\n[PHASE 1] Navigating to payload area...")
+
+# Get starting position from Enes100 (for logging and navigation)
+# The Enes100 system uses ArUco markers to track robot position
+start_x, start_y, start_angle = Enes100.get_coordinates()
+print(f"  Start position: X={start_x:.3f} m, Y={start_y:.3f} m")
+print(f"  Starting angle: {start_angle:.1f} degrees")
+
+# Move forward to reach the payload area
+# Distance and speed can be adjusted based on arena layout
+print("  Moving forward 400mm at 50% speed...")
+drivetrain.forward(400, NAV_SPEED)
+sleep_ms(500)  # Short pause after movement
+
+print("  [PHASE 1] Complete - Payload area reached")
+
+# ------------------------------------------------------------------
+# PHASE 2: PICK UP THE BALL USING RAMP + CLAW
+# ------------------------------------------------------------------
+print("\n[PHASE 2] Picking up payload...")
+
+# Step 1: Open the claw so it doesn't block the ball from rolling up
+print("  Opening claw...")
+claw.write(90)  # Open position
+sleep_ms(500)
+
+# Step 2: Push the ball forward against a wall
+# The ball will roll up the ramp as the robot moves forward
+# Using slow speed for precise control
+print("  Pushing ball onto ramp (slow push)...")
+drivetrain.forward(150, PUSH_SPEED)  # 150mm push at slow speed
+sleep_ms(1000)
+
+# Step 3: Close the claw to secure the ball from behind
+# This prevents the ball from rolling back off the ramp
+print("  Closing claw to secure ball...")
+claw.write(0)  # Closed position
+sleep_ms(500)
+
+print("  [PHASE 2] Complete - Payload secured on ramp")
+
+# ------------------------------------------------------------------
+# PHASE 3: IDENTIFY MATERIAL (PLASTIC vs FOAM)
+# ------------------------------------------------------------------
+print("\n[PHASE 3] Identifying material...")
+
+# The ultrasonic sensor above the ramp measures time-of-flight
+# - Plastic reflects sound waves clearly → accurate distance reading
+# - Foam absorbs sound waves → longer return time (appears farther)
+
+# Take 10 readings to get a reliable average
+material_readings = []
+print("  Taking 10 sensor readings...")
+for i in range(10):
+    dist = ultrasonic_material.distance_cm()
+    material_readings.append(dist)
+    print(f"    Reading {i+1}: {dist:.2f} cm")
+    sleep_ms(100)  # Wait 100ms between readings
+
+# Calculate the average distance
+avg_distance = sum(material_readings) / len(material_readings)
+print(f"\n  Average distance reading: {avg_distance:.2f} cm")
+
+# Decide material based on threshold
+# If reading is significantly higher than actual distance, it's foam
+if avg_distance > FOAM_THRESHOLD_CM:
+    material_type = "FOAM"
+    print(f"  >>> RESULT: FOAM detected (reading > {FOAM_THRESHOLD_CM}cm)")
+    print("  Reason: Sound waves were absorbed, causing longer return time")
+else:
+    material_type = "PLASTIC"
+    print(f"  >>> RESULT: PLASTIC detected (reading <= {FOAM_THRESHOLD_CM}cm)")
+    print("  Reason: Sound waves reflected clearly, accurate distance reading")
+
+# Send the result to Enes100 for grading
+Enes100.update_material(material_type)
+print(f"  Material type reported to Enes100: {material_type}")
+
+print("  [PHASE 3] Complete - Material identified")
+
+# ------------------------------------------------------------------
+# PHASE 4: WEIGH THE PAYLOAD
+# ------------------------------------------------------------------
+print("\n[PHASE 4] Weighing payload...")
+
+# The load cell (4 half-bridge strain gauges) measures force
+# The HX711 amplifies and converts the signal to digital
+
+# Take 10 weight readings, each averaging 5 samples
+weight_readings = []
+print("  Taking 10 weight readings...")
+for i in range(10):
+    weight = scale.mass(5)  # mass() averages 5 raw readings
+    weight_readings.append(weight)
+    print(f"    Reading {i+1}: {weight:.2f} grams")
+    sleep_ms(200)  # Wait 200ms between readings
+
+# Calculate the average weight
+avg_weight = sum(weight_readings) / len(weight_readings)
+print(f"\n  Average weight: {avg_weight:.2f} grams")
+
+# Send the weight to Enes100 for grading
+Enes100.update_weight(avg_weight)
+print(f"  Weight reported to Enes100: {avg_weight:.2f}g")
+
+print("  [PHASE 4] Complete - Payload weighed")
+
+# ------------------------------------------------------------------
+# PHASE 5: NAVIGATE TO DESTINATION ZONE
+# ------------------------------------------------------------------
+print("\n[PHASE 5] Navigating to destination zone...")
+
+# Get current position after payload pickup
+current_x, current_y, current_angle = Enes100.get_coordinates()
+print(f"  Current position: X={current_x:.3f} m, Y={current_y:.3f} m")
+print(f"  Current angle: {current_angle:.1f} degrees")
+
+# TODO: Replace with actual destination coordinates from Enes100
+# For now, using example coordinates (change these!)
+DESTINATION_X = 1.0  # meters
+DESTINATION_Y = 1.0  # meters
+print(f"  Destination: X={DESTINATION_X} m, Y={DESTINATION_Y} m")
+
+# Calculate direction to destination
+dx = DESTINATION_X - current_x
+dy = DESTINATION_Y - current_y
+
+# Calculate the angle we need to face (in radians, then convert to degrees)
+target_angle_rad = math.atan2(dy, dx)
+target_angle_deg = math.degrees(target_angle_rad)
+
+# Calculate how much to turn (difference between current and target)
+turn_amount = target_angle_deg - current_angle
+print(f"  Need to turn: {turn_amount:.1f} degrees")
+
+# Turn toward destination
+print(f"  Turning {turn_amount:.1f} degrees at {TURN_SPEED}% speed...")
+drivetrain.turn_deg(turn_amount, TURN_SPEED)
+sleep_ms(500)
+
+# Calculate distance to destination (in meters, convert to mm)
+distance_m = math.sqrt(dx*dx + dy*dy)
+distance_mm = distance_m * 1000
+print(f"  Distance to destination: {distance_m:.3f} m ({distance_mm:.0f} mm)")
+
+# Move forward to destination
+print(f"  Moving forward {distance_mm:.0f} mm at {NAV_SPEED}% speed...")
+drivetrain.forward(distance_mm, NAV_SPEED)
+sleep_ms(500)
+
+print("  [PHASE 5] Complete - Destination zone reached")
+
+# ------------------------------------------------------------------
+# PHASE 6: RELEASE PAYLOAD IN DESTINATION ZONE
+# ------------------------------------------------------------------
+print("\n[PHASE 6] Releasing payload...")
+
+# Open the claw to let the ball go
+print("  Opening claw...")
+claw.write(90)  # Open
+sleep_ms(500)
+
+# Back up slightly to leave the ball in the destination zone
+# This ensures the ball is not still touching the robot
+print("  Backing away to leave ball in zone...")
+drivetrain.forward(-100, PUSH_SPEED)  # Negative distance = reverse
+sleep_ms(500)
+
+print("  [PHASE 6] Complete - Payload released in destination zone")
+
+# ------------------------------------------------------------------
+# PHASE 7: MISSION COMPLETE
+# ------------------------------------------------------------------
+print("\n" + "=" * 50)
+print("MISSION COMPLETE")
+print("=" * 50)
+
+# Stop all motors (coast to stop)
+motor_front_left.off()
+motor_front_right.off()
+motor_rear.off()
+print("[MOTORS] All motors stopped")
+
+# Close claw (optional - resets for next run if any)
+claw.write(0)
+print("[SERVO] Claw closed")
+
+# Send mission complete signal to Enes100
+Enes100.mission_complete()
+print("[ENES100] Mission complete reported")
+
+# Enter idle loop - robot waits here forever
+# This prevents the program from exiting
+print("\nOTV entering idle mode. Mission finished successfully.")
+print("Press CTRL+C to stop program.\n")
+
+while True:
+    sleep_ms(1000)
+    # Optional: Print heartbeat so you know robot is still alive
+    # print("  [IDLE] OTV waiting...") 
