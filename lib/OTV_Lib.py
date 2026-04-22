@@ -81,7 +81,7 @@ class HCSR04:
     Authored by Roberto Sánchez under Apache License 2.0
     Used by Alex Goldstein
     """
-    def __init__(self, trigger_pin, echo_pin, echo_timeout_us=500*2*30):
+    def __init__(self, trigger_pin: int, echo_pin:int, echo_timeout_us = const(3000)):
         """
         trigger_pin: Output pin to send pulses
         echo_pin: Readonly pin to measure the distance. The pin should be protected with 1k resistor
@@ -292,6 +292,7 @@ class HX711(DeviceNotReady):
         sleep_us(WaitSleep)
         
 class Drivetrain:
+    SQRT3 = const(1.73205080757)
     w_circumference_mm = const(150.796447372)
     otv_radius_mm = const(172.44243)
     motor_rotations_per_ms = const(0.00085)
@@ -345,4 +346,35 @@ class Drivetrain:
         time.sleep_ms(int(rotations/motor_rotations_per_ms))
         self.w1.brake()
         self.w2.brake()
-    
+        
+    def move_relative_heading_deg(self, dist_mm: float, dir_deg: float, speed: float = default_motor_speed):
+        # We use a coordinate system with x-axis being the heading of the OTV
+        self.move_relative_heading_rad(dist_mm, math.radians(dir_deg), speed)
+        
+        
+    def move_relative_heading_rad(self, dist_mm: float, dir_rad: float, speed: float = default_motor_speed):
+        x_speed = speed * math.cos(dir_rad)
+        y_speed = speed * math.sin(dir_rad)
+        x_dist_mm = dist_mm * math.cos(dir_rad)
+        y_dist_mm = dist_mm * math.sin(dir_rad)
+        
+        w1_speed = (-SQRT3 * x_speed + y_speed)/2.0
+        w2_speed = (SQRT3 * x_speed + y_speed)/2.0
+        w3_speed = (-2.0 * y_speed)/2.0
+        
+        if y_dist_mm > 0.5 or y_dist_mm < -0.5:
+            rotations = math.fabs(y_dist_mm / w_circumference_mm)
+            sleep_time_ms = int(rotations/(motor_rotations_per_ms * math.fabs(w3_speed) / 100))
+            self.normalize_speeds(w1_speed, w2_speed, w3_speed)
+            time.sleep_ms(sleep_time_ms)
+        else:
+            rotations = math.fabs(x_dist_mm / (const(0.86602540378) * w_circumference_mm))
+            sleep_time_ms = int(rotations/(motor_rotations_per_ms * math.fabs(w1_speed) / 100))
+            self.normalize_speeds(w1_speed, w2_speed, w3_speed)
+            time.sleep_ms(sleep_time_ms)
+        
+        self.w1.brake()
+        self.w2.brake()
+        self.w3.brake()
+            
+        
