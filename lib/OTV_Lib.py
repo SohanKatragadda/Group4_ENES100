@@ -8,8 +8,10 @@ import machine
 
 platform_max_duties = {const('esp8266'):const(1023), const('esp32'):const(65535)}
 max_duty = platform_max_duties[platform]
-platform_duty_funcs = {const('esp8266'):PWM.duty, const('esp32'):PWM.duty_u16}
+platform_duty_funcs = {const('esp32'):PWM.duty_u16}
 duty_func = platform_duty_funcs[platform]
+
+SQRT3 = const(1.73205080757)
 
 class Servo:
     def __init__(self, servo_pin: int, min_pulse_width_ns: int = 500, max_pulse_width_ns: int = 2500, frequency: int = 50):
@@ -33,7 +35,7 @@ class Servo:
         return math.radians(self.read())
     
     def off(self):
-        self.servo.duty_func(0)
+        duty_func(self.servo, 0)
         
     def deinit(self):
         self.servo.deinit()
@@ -90,11 +92,11 @@ class HCSR04:
         """
         self.echo_timeout_us = echo_timeout_us
         # Init trigger pin (out)
-        self.trigger = Pin(trigger_pin, mode=Pin.OUT, pull=None)
+        self.trigger = Pin(trigger_pin, mode=Pin.OUT, pull=None) # type: ignore
         self.trigger.value(0)
 
         # Init echo pin (in)
-        self.echo = Pin(echo_pin, mode=Pin.IN, pull=None)
+        self.echo = Pin(echo_pin, mode=Pin.IN, pull=None) # type: ignore
 
     def _send_pulse_and_wait(self):
         """
@@ -209,14 +211,14 @@ class HX711(DeviceNotReady):
         return self.data.value() == 0
     
     def waitReady(self):
-        delayOver = self.Timeout(ReadyDelay)
+        delayOver = self.Timeout(HX711.ReadyDelay)
         while not self.isDeviceReady():
             if delayOver():
                 raise DeviceNotReady()
             
     def convertResult(self,val):
-        if val & MinVal:
-            val -= Frame
+        if val & HX711.MinVal:
+            val -= HX711.Frame
         return val
     
     def clock(self):
@@ -232,14 +234,14 @@ class HX711(DeviceNotReady):
             self.chan = ch
             if not self.isDeviceReady():
                 self.waitReady()
-            for n in range(Dbits + ch):
+            for n in range(HX711.Dbits + ch):
                 self.clock()
                 
     def getRaw(self, conv=True):
         if not self.isDeviceReady():
             self.waitReady()
         raw = 0
-        for b in range(Dbits - 1):
+        for b in range(HX711.Dbits - 1):
             self.clock()
             raw = (raw | self.data.value()) << 1
         self.clock()
@@ -268,8 +270,7 @@ class HX711(DeviceNotReady):
     def calFactor(self, f=None):
         if f is not None:
             self.cal = f
-        else:
-            return self.cal
+        return self.cal
         
     def calWeight(self, known_g):
         
@@ -289,10 +290,9 @@ class HX711(DeviceNotReady):
     def sleep(self):
         self.clk.value(0)
         self.clk.value(1)
-        sleep_us(WaitSleep)
+        sleep_us(HX711.WaitSleep)
         
 class Drivetrain:
-    SQRT3 = const(1.73205080757)
     w_circumference_mm = const(150.796447372)
     otv_radius_mm = const(172.44243)
     motor_rotations_per_ms = const(0.00085)
@@ -333,17 +333,17 @@ class Drivetrain:
             speed = -speed
             dist = -dist
             
-        rotations = (dist*otv_radius_mm) / w_circumference_mm
+        rotations = (dist*Drivetrain.otv_radius_mm) / Drivetrain.w_circumference_mm
         self.normalize_speeds(speed, speed, speed)
-        time.sleep_ms(int(rotations/motor_rotations_per_ms))
+        time.sleep_ms(int(rotations/Drivetrain.motor_rotations_per_ms))
         self.w1.brake()
         self.w2.brake()
         self.w3.brake()
     
     def forward(self, dist_mm: float, speed: float = default_motor_speed):
-        rotations = dist_mm / (const(0.86602540378) * w_circumference_mm)
+        rotations = dist_mm / (const(0.86602540378) * Drivetrain.w_circumference_mm)
         self.normalize_speeds(-speed, speed, 0)
-        time.sleep_ms(int(rotations/motor_rotations_per_ms))
+        time.sleep_ms(int(rotations/Drivetrain.motor_rotations_per_ms))
         self.w1.brake()
         self.w2.brake()
         
@@ -363,13 +363,13 @@ class Drivetrain:
         w3_speed = (-2.0 * y_speed)/2.0
         
         if y_dist_mm > 0.5 or y_dist_mm < -0.5:
-            rotations = math.fabs(y_dist_mm / w_circumference_mm)
-            sleep_time_ms = int(rotations/(motor_rotations_per_ms * math.fabs(w3_speed) / 100))
+            rotations = math.fabs(y_dist_mm / Drivetrain.w_circumference_mm)
+            sleep_time_ms = int(rotations/(Drivetrain.motor_rotations_per_ms * math.fabs(w3_speed) / 100))
             self.normalize_speeds(w1_speed, w2_speed, w3_speed)
             time.sleep_ms(sleep_time_ms)
         else:
-            rotations = math.fabs(x_dist_mm / (const(0.86602540378) * w_circumference_mm))
-            sleep_time_ms = int(rotations/(motor_rotations_per_ms * math.fabs(w1_speed) / 100))
+            rotations = math.fabs(x_dist_mm / (const(0.86602540378) * Drivetrain.w_circumference_mm))
+            sleep_time_ms = int(rotations/(Drivetrain.motor_rotations_per_ms * math.fabs(w1_speed) / 100))
             self.normalize_speeds(w1_speed, w2_speed, w3_speed)
             time.sleep_ms(sleep_time_ms)
         
