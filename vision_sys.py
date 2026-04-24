@@ -4,16 +4,16 @@ from time import sleep_ms
 from enes100 import Enes100
 from math import pi
 
-POINT_A = (0.5, 1.5)
-POINT_B = (0.5, 0.5)
-LIMBO_Y = 1.5
-LIMBO_CLEAR_X = 3.8
-POSITION_TOLERANCE = 0.08 #checks if OTV is within + or - of this distance (8cm)
+POINT_A: tuple = (0.5, 1.5)
+POINT_B: tuple = (0.5, 0.5)
+LIMBO_Y: float = 1.5
+LIMBO_CLEAR_X: float = 3.8
+POSITION_TOLERANCE: float = 0.08 #checks if OTV is within + or - of this distance (8cm)
 
 
 Enes100.begin("LebrOTV 'red ruby sunshine' James", 'MATERIALS', 420, 1120)
 
-def _choose_objective():
+def _choose_objective() -> tuple:
     """ Will return a tuple of (x_coord, y_coord, theta_to_turn) in radians"""
     x = Enes100.getX()
     y = Enes100.getY()
