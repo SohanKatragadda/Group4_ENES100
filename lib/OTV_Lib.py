@@ -6,19 +6,19 @@ import math
 import time
 import machine
 
-platform_max_duties = {const('esp8266'):const(1023), const('esp32'):const(65535)}
+platform_max_duties = {'esp8266':const(1023), 'esp32':const(65535)}
 max_duty = platform_max_duties[platform]
-platform_duty_funcs = {const('esp32'):PWM.duty_u16}
+platform_duty_funcs = {'esp8266':PWM.duty, 'esp32':PWM.duty_u16} # pyright: ignore[reportAttributeAccessIssue]
 duty_func = platform_duty_funcs[platform]
 
-SQRT3 = const(1.73205080757)
+SQRT3 = 1.73205080757
 
 class Servo:
     def __init__(self, servo_pin: int, min_pulse_width_us: int = 500, max_pulse_width_us: int = 2500, frequency: int = 50):
         self.servo = PWM(Pin(servo_pin, Pin.OUT))
         self.servo.freq(frequency)
-        self.servo_min_duty = (int) (max_duty * min_pulse_width_us / (1000000/frequency))
-        self.servo_max_duty = (int) (max_duty * max_pulse_width_us / (1000000/frequency))
+        self.servo_min_duty = int(max_duty * min_pulse_width_us / (1000000/frequency))
+        self.servo_max_duty = int(max_duty * max_pulse_width_us / (1000000/frequency))
         self.curr_pos_deg = 0.0
         
     def write(self, deg: float):
@@ -31,11 +31,12 @@ class Servo:
     def lerp(self, target: float, time_ms: int):
         if target < 0 or target > 180 or time_ms < 0:
             return
+        start_pos: float = self.read()
         time_us_per_interval: int = 1000000//self.servo.freq()
         intervals: int = time_ms * 1000 // time_us_per_interval
-        dist_per_interval: float = (target - self.read()) / intervals
-        for i in range(1, intervals):
-            self.write(self.read() + dist_per_interval)
+        dist_per_interval: float = (target - start_pos) / intervals
+        for i in range(1, intervals + 1):
+            self.write(start_pos + dist_per_interval * i)
             sleep_us(time_us_per_interval)
         self.write(target)
     
