@@ -101,7 +101,7 @@ def turn_to_face_rad(direction: float, tolerance: float = math.pi/72, DEBUG: boo
 def turn_to_face_deg(direction: float, tolerance: float = 1.0) -> None:
     turn_to_face_rad(math.radians(direction), math.radians(tolerance))
     
-def move_to_point(x_coord_mm: float, y_coord_mm: float, tolerance: float = 10.0) -> None:
+def move_to_point(x_coord_mm: float, y_coord_mm: float, tolerance: float = 10.0, DEBUG: bool = False) -> None:
     """This tells the OTV to move to a given point in the arena. 
 
 
@@ -112,17 +112,18 @@ def move_to_point(x_coord_mm: float, y_coord_mm: float, tolerance: float = 10.0)
     """
     
     dist_mm: float = get_euclidean_dist_mm(x_coord_mm, y_coord_mm)
-    Enes100.print("Moving to " + str(x_coord_mm / 1000) + ", " + str(y_coord_mm / 1000) + "")
+    if DEBUG:
+        Enes100.print("Moving to " + str(x_coord_mm / 1000) + ", " + str(y_coord_mm / 1000) + "")
     while dist_mm > tolerance:
-        Enes100.print("Waiting for visibility")
         while not Enes100.isVisible():
             time.sleep_ms(50)
         heading: float = Enes100.getTheta()
-        Enes100.print("Heading: " + str(heading))
         relative_angle_rad: float = get_angle_to_point_rad(x_coord_mm, y_coord_mm) - heading
-        Enes100.print("")
-        Enes100.print("Angle: " + str(relative_angle_rad/math.pi) + " * pi")
-        Enes100.print("Dist: " + str(dist_mm) + " mm")
+        if DEBUG:
+            Enes100.print("Heading: " + str(heading))
+            Enes100.print("")
+            Enes100.print("Angle: " + str(relative_angle_rad/math.pi) + " * pi")
+            Enes100.print("Dist: " + str(dist_mm) + " mm")
         dt.move_relative_heading_rad(dist_mm, relative_angle_rad)
         time.sleep_ms(3000)
         dist_mm = get_euclidean_dist_mm(x_coord_mm, y_coord_mm)
@@ -132,16 +133,32 @@ def nav_objective_one(tolerance: float = 150) -> None:
     LANDING_B: dict = {'x': 500, 'y': 500}
     if(get_euclidean_dist_mm(LANDING_A['x'], LANDING_A['y']) < get_euclidean_dist_mm(LANDING_B['x'], LANDING_B['y'])):
         turn_to_face_rad(-math.pi/2, DEBUG = True)
-        move_to_point(LANDING_B['x'], LANDING_B['y'], tolerance)
+        move_to_point(LANDING_B['x'], LANDING_B['y'], tolerance, DEBUG = True)
         dist: float = get_euclidean_dist_mm(LANDING_B['x'], LANDING_B['y'])
-        Enes100.print("Final Distance: " + str(dist) + " mm")
     else:
         turn_to_face_rad(math.pi/2, DEBUG = True)
-        move_to_point(LANDING_A['x'], LANDING_A['y'], tolerance)
+        move_to_point(LANDING_A['x'], LANDING_A['y'], tolerance, DEBUG = True)
         dist: float =  get_euclidean_dist_mm(LANDING_A['x'], LANDING_A['y'])
-        Enes100.print("Final Distance: " + str(dist) + " mm")
         
-while not Enes100.isConnected() or not Enes100.isVisible():
-    time.sleep(1)
-
-nav_objective_one()
+def nav_to_goal_zone(tolerance_dist: float = 10, tolerance_deg: float = 2.5):
+    obstacles: tuple = {'x': 1100, 'y': 1500}, {'x': 1900, 'y': 1500}, {'x': 1100, 'y': 1000}, {'x': 1900, 'y': 1000}, {'x': 1100, 'y': 500}, {'x': 1900, 'y': 500}    
+    idx: int = 0
+    turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg))
+    while idx < 3:
+        move_to_point(obstacles[idx]['x'], obstacles[idx]['y'],  tolerance_dist)
+        turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg))
+        if side_us.distance_mm() > 300:
+            move_to_point(obstacles[idx+3]['x'], obstacles[idx+3]['y'], tolerance_dist)
+            break
+    idx = 3
+    turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg))
+    while idx < 6:
+        move_to_point(obstacles[idx]['x'], obstacles[idx]['y'],  tolerance_dist)
+        turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg))
+        if side_us.distance_mm() > 300:
+            move_to_point(obstacles[idx]['x'] + 1000, obstacles[idx]['y'] + 1000, tolerance_dist)
+            break
+    move_to_point(3000, 1500, tolerance_dist)
+    move_to_point(3700, 1500, tolerance_dist)
+    
+    
