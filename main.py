@@ -26,14 +26,14 @@ Enes100.begin("LebrOTV 'red ruby sunshine' James", 'MATERIALS', 420, 1120)
 def get_x_mm() -> float:
     curr_x: float = Enes100.getX()
     while curr_x is -1:
-        time.sleep_ms(50)
+        wait_for_fresh_data()
         curr_x = Enes100.getX()
     return curr_x * 1000
 
 def get_y_mm() -> float:
     curr_y: float = Enes100.getY()
     while curr_y is -1:
-        time.sleep_ms(50)
+        wait_for_fresh_data()
         curr_y = Enes100.getY()
     return curr_y * 1000
 
@@ -69,15 +69,10 @@ def turn_to_face_rad(direction: float, tolerance: float = math.pi/72, DEBUG: boo
             been reached or not.
     """
     tolerance = math.fabs(tolerance)
-    heading: float = Enes100.getTheta()
-    upper_bound: float = direction + tolerance
-    lower_bound: float = direction - tolerance
-    # Implement wrapping of bounds around the circle, while not strictly enforced
-    # it is assumed that tolerance is less than pi radians
-    if upper_bound > math.pi:
-        upper_bound -= 2 * math.pi
-    if lower_bound < -math.pi:
-        lower_bound += 2 * math.pi
+    wait_for_fresh_data()
+    heading: float = Enes100.getTheta() + (2 * math.pi)
+    upper_bound: float = direction + tolerance + (2 * math.pi)
+    lower_bound: float = direction - tolerance + (2 * math.pi)
         
     while heading > upper_bound or heading < lower_bound: 
         turn_amount: float = direction - heading
@@ -87,14 +82,14 @@ def turn_to_face_rad(direction: float, tolerance: float = math.pi/72, DEBUG: boo
             turn_amount += 2 * math.pi
         if DEBUG:
             Enes100.print("")
-            Enes100.print("dir: " + str(direction/math.pi) + " * pi")
-            Enes100.print("hea: " + str(heading/math.pi) + " * pi")
+            Enes100.print("dir: " + str(direction/math.pi - 2) + " * pi")
+            Enes100.print("hea: " + str(heading/math.pi - 2) + " * pi")
             Enes100.print("amt: " + str(turn_amount/math.pi) + " * pi")
         dt.turn_rad(turn_amount)
-        time.sleep_ms(3000)
+        wait_for_fresh_data()
         while not Enes100.isVisible():
-            time.sleep_ms(50)
-        heading = Enes100.getTheta()
+            wait_for_fresh_data()
+        heading = Enes100.getTheta() + (2 * math.pi)
     
     return
 
@@ -125,7 +120,7 @@ def move_to_point(x_coord_mm: float, y_coord_mm: float, tolerance: float = 10.0,
             Enes100.print("Angle: " + str(relative_angle_rad/math.pi) + " * pi")
             Enes100.print("Dist: " + str(dist_mm) + " mm")
         dt.move_relative_heading_rad(dist_mm, relative_angle_rad)
-        time.sleep_ms(3000)
+        wait_for_fresh_data()
         dist_mm = get_euclidean_dist_mm(x_coord_mm, y_coord_mm)
 
 def nav_objective_one(tolerance: float = 150) -> None:
@@ -141,33 +136,34 @@ def nav_objective_one(tolerance: float = 150) -> None:
         dist: float =  get_euclidean_dist_mm(LANDING_A['x'], LANDING_A['y'])
         
 def nav_to_goal_zone(tolerance_dist: float = 10, tolerance_deg: float = 2.5, DEBUG: bool = False):
-    obstacles: tuple = {'x': 1100, 'y': 1500}, {'x': 1100, 'y': 1000}, {'x': 1100, 'y': 500}, {'x': 1900, 'y': 1500}, {'x': 1900, 'y': 1000}, {'x': 1900, 'y': 500}    
-    idx: int = 0
-    turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg))
-    while idx < 3:
-        move_to_point(obstacles[idx]['x'], obstacles[idx]['y'],  tolerance_dist)
-        turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg))
+    x_coords: tuple[int, int] = (1100, 1900)
+    y_coords: tuple[int, int, int] = (1500, 1000, 500)
+    turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg), DEBUG)
+    for y in y_coords:
+        move_to_point(x_coords[0], y, tolerance_dist, DEBUG)
+        turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg), DEBUG)
         dist: float = side_us.distance_mm()
         if DEBUG:
-            Enes100.print("dist in first obstacle col: " + str(dist))
+            Enes100.print("Obstacle dist read in first column: " + str(dist))
         if dist > 300:
-            move_to_point(obstacles[idx+3]['x'], obstacles[idx+3]['y'], tolerance_dist)
+            move_to_point(x_coords[1], y, tolerance_dist, DEBUG)
             break
-        idx++
-        
-    idx = 3
-    turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg))
-    while idx < 6:
-        move_to_point(obstacles[idx]['x'], obstacles[idx]['y'],  tolerance_dist)
-        turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg))
+    turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg), DEBUG)
+    for y in y_coords:
+        move_to_point(x_coords[1], y, tolerance_dist, DEBUG)
+        turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg), DEBUG)
+        dist: float = side_us.distance_mm()
         if DEBUG:
-            Enes100.print("dist in second obstacle col: " + str(dist))
+            Enes100.print("Obstacle dist read in second column: " + str(dist))
         if dist > 300:
-            move_to_point(obstacles[idx]['x'] + 1000, obstacles[idx]['y'] + 1000, tolerance_dist)
+            move_to_point(x_coords[1] + 1000, y, tolerance_dist, DEBUG)
             break
-        idx++
     move_to_point(3000, 1500, tolerance_dist)
     move_to_point(4000, 1500, 600)
+    
+def wait_for_fresh_data():
+    while not Enes100.has_fresh_data:
+        sleep_us(Enes100._POSE_REQUEST_PERIOD_MS)
     
 while not Enes100.isVisible() or not Enes100.isConnected():
     time.sleep(2)

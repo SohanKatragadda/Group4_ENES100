@@ -17,6 +17,9 @@ class Enes100:
     # Re-export mission constants (so callers can do Enes100.DEPTH, Enes100.RED, etc.)
     # ----------------------------
 
+    # Extra implementation-specific data
+    has_fresh_data: bool = True
+
     # Mission "type" constants (first argument to Enes100.mission)
     DIRECTION = _m.DIRECTION
     LENGTH = _m.LENGTH
@@ -193,21 +196,25 @@ class Enes100:
 
     @classmethod
     def getX(cls):
+        cls.has_fresh_data = False
         with cls._lock:
             return cls._x
 
     @classmethod
     def getY(cls):
+        cls.has_fresh_data = False
         with cls._lock:
             return cls._y
 
     @classmethod
     def getTheta(cls):
+        cls.has_fresh_data = False
         with cls._lock:
             return cls._theta
 
     @classmethod
     def isVisible(cls):
+        cls.has_fresh_data = False
         with cls._lock:
             return bool(cls._visible)
 
@@ -545,6 +552,7 @@ class Enes100:
                 cls._y = y
                 cls._theta = t
                 cls._visible = vis
+                cls.has_fresh_data = True
 
         elif op == "ping":
             status = str(data.get("status", "")).lower()
