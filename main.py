@@ -140,25 +140,36 @@ def nav_objective_one(tolerance: float = 150) -> None:
         move_to_point(LANDING_A['x'], LANDING_A['y'], tolerance, DEBUG = True)
         dist: float =  get_euclidean_dist_mm(LANDING_A['x'], LANDING_A['y'])
         
-def nav_to_goal_zone(tolerance_dist: float = 10, tolerance_deg: float = 2.5):
-    obstacles: tuple = {'x': 1100, 'y': 1500}, {'x': 1900, 'y': 1500}, {'x': 1100, 'y': 1000}, {'x': 1900, 'y': 1000}, {'x': 1100, 'y': 500}, {'x': 1900, 'y': 500}    
+def nav_to_goal_zone(tolerance_dist: float = 10, tolerance_deg: float = 2.5, DEBUG: bool = False):
+    obstacles: tuple = {'x': 1100, 'y': 1500}, {'x': 1100, 'y': 1000}, {'x': 1100, 'y': 500}, {'x': 1900, 'y': 1500}, {'x': 1900, 'y': 1000}, {'x': 1900, 'y': 500}    
     idx: int = 0
     turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg))
     while idx < 3:
         move_to_point(obstacles[idx]['x'], obstacles[idx]['y'],  tolerance_dist)
         turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg))
-        if side_us.distance_mm() > 300:
+        dist: float = side_us.distance_mm()
+        if DEBUG:
+            Enes100.print("dist in first obstacle col: " + str(dist))
+        if dist > 300:
             move_to_point(obstacles[idx+3]['x'], obstacles[idx+3]['y'], tolerance_dist)
             break
+        idx++
+        
     idx = 3
     turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg))
     while idx < 6:
         move_to_point(obstacles[idx]['x'], obstacles[idx]['y'],  tolerance_dist)
         turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg))
-        if side_us.distance_mm() > 300:
+        if DEBUG:
+            Enes100.print("dist in second obstacle col: " + str(dist))
+        if dist > 300:
             move_to_point(obstacles[idx]['x'] + 1000, obstacles[idx]['y'] + 1000, tolerance_dist)
             break
+        idx++
     move_to_point(3000, 1500, tolerance_dist)
-    move_to_point(3700, 1500, tolerance_dist)
+    move_to_point(4000, 1500, 600)
     
+while not Enes100.isVisible() or not Enes100.isConnected():
+    time.sleep(2)
     
+nav_to_goal_zone(DEBUG = True)
