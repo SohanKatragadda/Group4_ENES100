@@ -1,6 +1,7 @@
 from OTV_Lib import *
 from machine import Pin
 from enes100 import *
+from time import *
 
 
 w1 = Motor(Pin(12), Pin(5), Pin(16))
@@ -14,6 +15,7 @@ forklift_us = HCSR04(trigger_pin = 33, echo_pin =34)
 side_us = HCSR04(trigger_pin = 26, echo_pin = 25)
 
 claw = Servo(32)
+claw.write(100.0)
 
 Enes100.begin("LebrOTV 'red ruby sunshine' James", 'MATERIALS', 420, 1120)
 """
@@ -106,12 +108,13 @@ def move_to_point(x_coord_mm: float, y_coord_mm: float, tolerance: float = 10.0,
         tolerance (float, optional): How far from the target position the OTV is allowed to be when determining if the target is reached in millimeters. Defaults to 10.0 mm.
     """
     
+    wait_for_fresh_data()
     dist_mm: float = get_euclidean_dist_mm(x_coord_mm, y_coord_mm)
     if DEBUG:
         Enes100.print("Moving to " + str(x_coord_mm / 1000) + ", " + str(y_coord_mm / 1000) + "")
     while dist_mm > tolerance:
         while not Enes100.isVisible():
-            time.sleep_ms(50)
+            wait_for_fresh_data()
         heading: float = Enes100.getTheta()
         relative_angle_rad: float = get_angle_to_point_rad(x_coord_mm, y_coord_mm) - heading
         if DEBUG:
@@ -161,10 +164,20 @@ def nav_to_goal_zone(tolerance_dist: float = 10, tolerance_deg: float = 2.5, DEB
     move_to_point(3000, 1500, tolerance_dist)
     move_to_point(4000, 1500, 600)
     
+def actuate(time_s: float = 600):
+    end: int = ticks_add(ticks_ms(), int(time_s * 1000))
+    dt.all_on()
+    while(ticks_diff(end, ticks_ms())):
+        claw.write(180)
+        sleep_ms(10)
+        claw.write(100)
+        sleep_ms(10)
+    dt.all_brake()
+    
 def wait_for_fresh_data():
     while not Enes100.has_fresh_data:
         sleep_us(Enes100._POSE_REQUEST_PERIOD_MS)
-    
+
 while not Enes100.isVisible() or not Enes100.isConnected():
     time.sleep(2)
     

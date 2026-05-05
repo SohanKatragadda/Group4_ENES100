@@ -19,7 +19,8 @@ class Servo:
         self.servo.freq(frequency)
         self.servo_min_duty = int(max_duty * min_pulse_width_us / (1000000/frequency))
         self.servo_max_duty = int(max_duty * max_pulse_width_us / (1000000/frequency))
-        self.curr_pos_deg = 0.0
+        self.curr_pos_deg = 100.0
+        self.write(100)
         
     def write(self, deg: float):
         self.curr_pos_deg = deg
@@ -389,4 +390,12 @@ class Drivetrain:
         self.w2.brake()
         self.w3.brake()
             
-        
+    def all_on(self):
+        self.w1.forward(Drivetrain.default_motor_speed)
+        self.w2.forward(Drivetrain.default_motor_speed)
+        self.w3.forward(Drivetrain.default_motor_speed)
+    
+    def all_brake(self):
+        self.w1.brake()
+        self.w2.brake()
+        self.w3.brake()
