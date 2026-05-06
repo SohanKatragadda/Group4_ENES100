@@ -1,0 +1,173 @@
+from machine import Pin
+from time import sleep_ms
+import math
+
+# ============================================
+# MOTOR CLASS
+# ============================================
+
+class Motor:
+    def __init__(self, speed_pin, forward_pin, reverse_pin):
+        self.speed_pin = Pin(speed_pin, Pin.OUT)
+        self.forward_pin = Pin(forward_pin, Pin.OUT)
+        self.reverse_pin = Pin(reverse_pin, Pin.OUT)
+        
+    def forward(self, speed):
+        self.forward_pin.value(1)
+        self.reverse_pin.value(0)
+        
+    def reverse(self, speed):
+        self.forward_pin.value(0)
+        self.reverse_pin.value(1)
+        
+    def brake(self):
+        self.forward_pin.value(1)
+        self.reverse_pin.value(1)
+
+# ============================================
+# SERVO CLASS
+# ============================================
+
+class Servo:
+    def __init__(self, pin):
+        from machine import PWM
+        self.pwm = PWM(Pin(pin))
+        self.pwm.freq(50)
+        
+    def write(self, angle):
+        duty = int(((angle / 180) * 2.0 + 0.5) / 20 * 65535)
+        self.pwm.duty_u16(duty)
+
+# ============================================
+# CORRECT PINS FROM YOUR DIAGRAM
+# ============================================
+
+# Motor 1 (Front Left) - L298N #1 Channel A
+MOTOR1_SPEED_PIN = 8   # D8 = ENA
+MOTOR1_FWD_PIN = 4     # D4 = IN1
+MOTOR1_REV_PIN = 5     # D5 = IN2
+
+# Motor 2 (Front Right) - L298N #1 Channel B
+MOTOR2_SPEED_PIN = 9   # D9 = ENB
+MOTOR2_FWD_PIN = 6     # D6 = IN3
+MOTOR2_REV_PIN = 7     # D7 = IN4
+
+# Motor 3 (Rear) - L298N #2 Channel A
+MOTOR3_SPEED_PIN = 12  # D12 = ENA
+MOTOR3_FWD_PIN = 10    # D10 = IN1
+MOTOR3_REV_PIN = 11    # D11 = IN2
+
+# Servo pin
+SERVO_PIN = 23
+
+# Default speed
+DEFAULT_SPEED = 70
+
+# ============================================
+# INITIALIZE MOTORS
+# ============================================
+
+motor1 = Motor(MOTOR1_SPEED_PIN, MOTOR1_FWD_PIN, MOTOR1_REV_PIN)
+motor2 = Motor(MOTOR2_SPEED_PIN, MOTOR2_FWD_PIN, MOTOR2_REV_PIN)
+motor3 = Motor(MOTOR3_SPEED_PIN, MOTOR3_FWD_PIN, MOTOR3_REV_PIN)
+
+# ============================================
+# KIWI DRIVE FUNCTIONS
+# ============================================
+
+def set_velocity(forward_vel=0, strafe_vel=0, rotation_vel=0):
+    # Kiwi drive kinematics for 3 wheels at 120°
+    m1_speed = forward_vel + rotation_vel
+    m2_speed = forward_vel * -0.5 + strafe_vel * 0.866 + rotation_vel
+    m3_speed = forward_vel * -0.5 - strafe_vel * 0.866 + rotation_vel
+    
+    # Normalize if any speed exceeds 100
+    speeds = [abs(m1_speed), abs(m2_speed), abs(m3_speed)]
+    max_speed = max(speeds)
+    if max_speed > 100:
+        m1_speed = (m1_speed / max_speed) * 100
+        m2_speed = (m2_speed / max_speed) * 100
+        m3_speed = (m3_speed / max_speed) * 100
+    
+    # Apply to motors
+    if m1_speed >= 0:
+        motor1.forward(int(m1_speed))
+    else:
+        motor1.reverse(int(-m1_speed))
+        
+    if m2_speed >= 0:
+        motor2.forward(int(m2_speed))
+    else:
+        motor2.reverse(int(-m2_speed))
+        
+    if m3_speed >= 0:
+        motor3.forward(int(m3_speed))
+    else:
+        motor3.reverse(int(-m3_speed))
+
+def forward(speed=DEFAULT_SPEED):
+    set_velocity(forward_vel=speed, strafe_vel=0, rotation_vel=0)
+
+def backward(speed=DEFAULT_SPEED):
+    set_velocity(forward_vel=-speed, strafe_vel=0, rotation_vel=0)
+
+def stop():
+    motor1.brake()
+    motor2.brake()
+    motor3.brake()
+
+# ============================================
+# INITIALIZE CLAW
+# ============================================
+
+claw = Servo(SERVO_PIN)
+
+# Test claw
+print("Testing claw...")
+claw.write(180)   # Open
+sleep_ms(1000)
+claw.write(110)   # Closed (secure position)
+sleep_ms(1000)
+claw.write(180)   # Open
+sleep_ms(500)
+print("Claw ready!")
+
+# ============================================
+# MS7 PICKUP SEQUENCE
+# ============================================
+
+print("\n=========================================")
+print("MS7: PICKUP SEQUENCE")
+print("=========================================\n")
+
+# Step 1: Open claw
+print("[STEP 1] Opening claw...")
+claw.write(180)
+sleep_ms(500)
+
+# Step 2: Push ball toward wall (ball rolls up ramp)
+print("[STEP 2] Pushing ball toward wall...")
+forward(30)      # 30% speed
+sleep_ms(1000)   # Push for 1 second
+
+# Step 3: Stop moving
+print("[STEP 3] Stopping...")
+stop()
+sleep_ms(100)
+
+# Step 4: Close claw to secure ball from behind
+print("[STEP 4] Closing claw to secure ball...")
+claw.write(110)
+sleep_ms(500)
+
+# Step 5: Back up slightly to snug claw against ball
+print("[STEP 5] Snugging claw against ball...")
+backward(20)
+sleep_ms(300)
+stop()
+
+# Step 6: Done
+print("\n=========================================")
+print("MS7: PICKUP COMPLETE!")
+print("Ball is secured on the ramp.")
+print("=========================================") 
