@@ -9,7 +9,7 @@ w2 = Motor(Pin(13), Pin(17), Pin(18))
 w3 = Motor(Pin(14), Pin(19), Pin(23))
 dt = Drivetrain(w1, w2, w3)
 
-# scale = HX711(35, 3)
+scale = HX711(35, 3, HX711.selA64)
 
 forklift_us = HCSR04(trigger_pin = 33, echo_pin =34)
 side_us = HCSR04(trigger_pin = 26, echo_pin = 25)
@@ -59,7 +59,7 @@ def get_angle_to_point_rad(x_pos_mm: float, y_pos_mm: float) -> float:
     else:
         return math.atan(delta_y_mm/delta_x_mm) + math.pi if delta_x_mm < 0 else math.atan(delta_y_mm/delta_x_mm)
     
-def turn_to_face_rad(direction: float, tolerance: float = math.pi/72, DEBUG: bool = False) -> None:
+def turn_to_face_rad(direction: float, tolerance: float = math.pi/72, DEBUG: bool = False, speed: float = dt.default_motor_speed) -> None:
     """
     Turns the OTV to face the direction specified by direction_rad in radians.
     It is up to the caller to ensure the ArUco marker is visible before calling.
@@ -87,7 +87,7 @@ def turn_to_face_rad(direction: float, tolerance: float = math.pi/72, DEBUG: boo
             Enes100.print("dir: " + str(direction/math.pi - 2) + " * pi")
             Enes100.print("hea: " + str(heading/math.pi - 2) + " * pi")
             Enes100.print("amt: " + str(turn_amount/math.pi) + " * pi")
-        dt.turn_rad(turn_amount)
+        dt.turn_rad(turn_amount, speed)
         wait_for_fresh_data()
         while not Enes100.isVisible():
             wait_for_fresh_data()
@@ -125,18 +125,6 @@ def move_to_point(x_coord_mm: float, y_coord_mm: float, tolerance: float = 10.0,
         dt.move_relative_heading_rad(dist_mm, relative_angle_rad)
         wait_for_fresh_data()
         dist_mm = get_euclidean_dist_mm(x_coord_mm, y_coord_mm)
-
-def nav_objective_one(tolerance: float = 150) -> None:
-    LANDING_A: dict = {'x': 500, 'y': 1500}
-    LANDING_B: dict = {'x': 500, 'y': 500}
-    if(get_euclidean_dist_mm(LANDING_A['x'], LANDING_A['y']) < get_euclidean_dist_mm(LANDING_B['x'], LANDING_B['y'])):
-        turn_to_face_rad(-math.pi/2, DEBUG = True)
-        move_to_point(LANDING_B['x'], LANDING_B['y'], tolerance, DEBUG = True)
-        dist: float = get_euclidean_dist_mm(LANDING_B['x'], LANDING_B['y'])
-    else:
-        turn_to_face_rad(math.pi/2, DEBUG = True)
-        move_to_point(LANDING_A['x'], LANDING_A['y'], tolerance, DEBUG = True)
-        dist: float =  get_euclidean_dist_mm(LANDING_A['x'], LANDING_A['y'])
         
 def nav_to_goal_zone(tolerance_dist: float = 10, tolerance_deg: float = 2.5, DEBUG: bool = False):
     x_coords: tuple[int, int] = (1100, 1900)
@@ -164,6 +152,56 @@ def nav_to_goal_zone(tolerance_dist: float = 10, tolerance_deg: float = 2.5, DEB
     move_to_point(3000, 1500, tolerance_dist)
     move_to_point(4000, 1500, 600)
     
+def landing(tolerance_dist: float = 10, tolerance_rad: float = math.radians(1)):
+    landing_A: bool = get_euclidean_dist_mm(500, 1500) < get_euclidean_dist_mm(500, 500)
+    scale.wake()
+    scale.tare(20)
+    if landing_A:
+        # We start at landing point A
+        turn_to_face_rad(-math.pi/2)
+        move_to_point(500, 800, tolerance_dist)
+        # Ensure we are really close to facing the right direction
+        turn_to_face_rad(-math.pi/2, tolerance_rad, speed = 50.0)
+    else:
+        # We start at landing point B
+        turn_to_face_rad(math.pi/2)
+        move_to_point(500, 1200, tolerance_dist)
+        # Ensure we are really close to facing the right direction
+        turn_to_face_rad(math.pi/2, tolerance_rad, speed = 50.0)
+    # We are now directly in front of our mission objective, we move forward and push the ball into the wall
+    claw.write(180)
+    dt.forward(1500) # Move forward a lot more than necessary to ensure we are against the wall
+    claw.write(110)
+    Enes100.print("Reading material weight") # Start material weighing process
+    g = scale.mass(10)
+    if g < 85 or g > 325:
+        Enes100.print("Failed to read material weight class")
+    elif g <= 150:
+        Enes100.mission(Enes100.WEIGHT, Enes100.LIGHT)
+    elif g <= 220:
+        Enes100.mission(Enes100.WEIGHT, Enes100.MEDIUM)
+    else:
+        Enes100.mission(Enes100.WEIGHT, Enes100.HEAVY)
+    us_dist: int = 0
+    Enes100.print("Reading material type") # Start material type identification
+    for i in range(10):
+        currDis = forklift_us.distance_mm()
+        if currDis > 400:
+            pass
+        elif currDis < 0:
+            us_dist -= 30
+        else:
+            us_dist += currDis
+        sleep_ms(50)
+    if us_dist < 0:
+        Enes100.mission(Enes100.MATERIAL_TYPE, Enes100.FOAM)
+    elif us_dist <= 500:
+        Enes100.mission(Enes100.MATERIAL_TYPE, Enes100.PLASTIC)
+    else:
+        Enes100.print("Failed to read material type")
+    nav_to_goal_zone()
+    Enes100.stop()
+    
 def actuate(time_s: float = 600):
     end: int = ticks_add(ticks_ms(), int(time_s * 1000))
     dt.all_on()
@@ -179,6 +217,6 @@ def wait_for_fresh_data():
         sleep_us(Enes100._POSE_REQUEST_PERIOD_MS)
 
 while not Enes100.isVisible() or not Enes100.isConnected():
-    time.sleep(2)
+    time.sleep_ms(Enes100._POSE_REQUEST_PERIOD_MS)
     
-nav_to_goal_zone(DEBUG = True)
+landing()

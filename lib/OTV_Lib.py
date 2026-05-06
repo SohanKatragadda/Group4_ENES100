@@ -276,8 +276,8 @@ class HX711(DeviceNotReady):
         self.tareVal = self.mean(n)
         return self.tareVal
 
-    def mass(self, n:int):
-        g = (self.mean(n) - self.tareVal) / self.cal
+    def mass(self, n:int) -> float:
+        g: float = (self.mean(n) - self.tareVal) / self.cal
         return g
     
     def calFactor(self, f=None):
