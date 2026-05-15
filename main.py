@@ -9,13 +9,13 @@ w2 = Motor(Pin(13), Pin(17), Pin(18))
 w3 = Motor(Pin(14), Pin(19), Pin(23))
 dt = Drivetrain(w1, w2, w3)
 
-scale = HX711(35, 3, HX711.selA64)
+scale = HX711(35, 27, HX711.selA64)
 
 forklift_us = HCSR04(trigger_pin = 33, echo_pin =34)
 side_us = HCSR04(trigger_pin = 26, echo_pin = 25)
 
 claw = Servo(32)
-claw.write(100.0)
+claw.write(180.0)
 
 Enes100.begin("LebrOTV 'red ruby sunshine' James", 'MATERIALS', 420, 1120)
 """
@@ -128,7 +128,7 @@ def move_to_point(x_coord_mm: float, y_coord_mm: float, tolerance: float = 10.0,
         
 def nav_to_goal_zone(tolerance_dist: float = 10, tolerance_deg: float = 2.5, DEBUG: bool = False):
     x_coords: tuple[int, int] = (1100, 1900)
-    y_coords: tuple[int, int, int] = (1500, 1000, 500)
+    y_coords: tuple[int, int, int] = (1650, 1000, 350)
     turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg), DEBUG)
     for y in y_coords:
         move_to_point(x_coords[0], y, tolerance_dist, DEBUG)
@@ -136,7 +136,7 @@ def nav_to_goal_zone(tolerance_dist: float = 10, tolerance_deg: float = 2.5, DEB
         dist: float = side_us.distance_mm()
         if DEBUG:
             Enes100.print("Obstacle dist read in first column: " + str(dist))
-        if dist > 300:
+        if dist > 300 or dist is -1:
             move_to_point(x_coords[1], y, tolerance_dist, DEBUG)
             break
     turn_to_face_rad(-math.pi * 2/3, math.radians(tolerance_deg), DEBUG)
@@ -146,41 +146,46 @@ def nav_to_goal_zone(tolerance_dist: float = 10, tolerance_deg: float = 2.5, DEB
         dist: float = side_us.distance_mm()
         if DEBUG:
             Enes100.print("Obstacle dist read in second column: " + str(dist))
-        if dist > 300:
+        if dist > 300 or dist is -1:
             move_to_point(x_coords[1] + 1000, y, tolerance_dist, DEBUG)
             break
-    move_to_point(3000, 1500, tolerance_dist)
-    move_to_point(4000, 1500, 600)
+    move_to_point(3000, 1700, tolerance_dist)
+    move_to_point(4000, 1700, 600)
     
-def landing(tolerance_dist: float = 10, tolerance_rad: float = math.radians(1)):
-    landing_A: bool = get_euclidean_dist_mm(500, 1500) < get_euclidean_dist_mm(500, 500)
+def landing(tolerance_dist: float = 10, tolerance_rad: float = math.radians(5)):
+    landing_A: bool = get_euclidean_dist_mm(310, 1500) < get_euclidean_dist_mm(350, 500)
     scale.wake()
     scale.tare(20)
     if landing_A:
         # We start at landing point A
         turn_to_face_rad(-math.pi/2)
-        move_to_point(500, 800, tolerance_dist)
+        move_to_point(350, 1000, tolerance_dist, True)
         # Ensure we are really close to facing the right direction
-        turn_to_face_rad(-math.pi/2, tolerance_rad, speed = 50.0)
+        turn_to_face_rad(-math.pi/2, tolerance_rad, speed = 75.0)
     else:
         # We start at landing point B
         turn_to_face_rad(math.pi/2)
-        move_to_point(500, 1200, tolerance_dist)
+        move_to_point(310, 1000, tolerance_dist, True)
         # Ensure we are really close to facing the right direction
-        turn_to_face_rad(math.pi/2, tolerance_rad, speed = 50.0)
+        turn_to_face_rad(math.pi/2, tolerance_rad, speed = 75.0)
     # We are now directly in front of our mission objective, we move forward and push the ball into the wall
     claw.write(180)
     dt.forward(1500) # Move forward a lot more than necessary to ensure we are against the wall
     claw.write(110)
+    dt.backward(750)
     Enes100.print("Reading material weight") # Start material weighing process
     g = scale.mass(10)
-    if g < 85 or g > 325:
+    Enes100.print("Weight: " + str(g) + " g")
+    if g < 10 or g > 350:
         Enes100.print("Failed to read material weight class")
     elif g <= 150:
+        Enes100.print("Material Weight Class: LIGHT")
         Enes100.mission(Enes100.WEIGHT, Enes100.LIGHT)
     elif g <= 220:
+        Enes100.print("Material Weight Class: MEDIUM")
         Enes100.mission(Enes100.WEIGHT, Enes100.MEDIUM)
     else:
+        Enes100.print("Material Weight Class: HEAVY")
         Enes100.mission(Enes100.WEIGHT, Enes100.HEAVY)
     us_dist: int = 0
     Enes100.print("Reading material type") # Start material type identification
@@ -194,8 +199,10 @@ def landing(tolerance_dist: float = 10, tolerance_rad: float = math.radians(1)):
             us_dist += currDis
         sleep_ms(50)
     if us_dist < 0:
+        Enes100.print("Mission material: FOAM")
         Enes100.mission(Enes100.MATERIAL_TYPE, Enes100.FOAM)
     elif us_dist <= 500:
+        Enes100.print("Mission material: PLASTIC")
         Enes100.mission(Enes100.MATERIAL_TYPE, Enes100.PLASTIC)
     else:
         Enes100.print("Failed to read material type")
@@ -213,10 +220,7 @@ def actuate(time_s: float = 600):
     dt.all_brake()
     
 def wait_for_fresh_data():
+    Enes100.print("Waiting for fresh data")
     while not Enes100.has_fresh_data:
         sleep_us(Enes100._POSE_REQUEST_PERIOD_MS)
 
-while not Enes100.isVisible() or not Enes100.isConnected():
-    time.sleep_ms(Enes100._POSE_REQUEST_PERIOD_MS)
-    
-landing()

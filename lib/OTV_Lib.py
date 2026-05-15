@@ -1,7 +1,7 @@
 from machine import Pin, PWM
 from sys import platform
 from micropython import const
-from time import sleep_us, ticks_ms
+from time import sleep_us, ticks_ms, sleep_ms
 import math
 import time
 import machine
@@ -195,9 +195,9 @@ class HX711(DeviceNotReady):
         3:("A",64)
         }
     CalibrationFactors = {
-        1: 27.484726,
+        1: 26.7584,
         2: 1, #cooked, dont use channel b
-        3: 13.345454,
+        3: 12.339,
         }
     
     def __init__(self, dOut: int, pdSck: int, ch:int = selA128):
@@ -287,7 +287,8 @@ class HX711(DeviceNotReady):
         
     def calWeight(self, known_g):
         
-        input("Place known weight on scale, then press Enter...")
+        print("Place known weight on scale, then wait 1 second")
+        sleep_ms(1000)
 
         raw = self.mean(20)
         factor = (raw - self.tareVal) / known_g
@@ -356,6 +357,13 @@ class Drivetrain:
     def forward(self, dist_mm: float, speed: float = default_motor_speed):
         rotations = dist_mm / (const(0.86602540378) * Drivetrain.w_circumference_mm)
         self.normalize_speeds(-speed, speed, 0)
+        time.sleep_ms(int(rotations/Drivetrain.motor_rotations_per_ms))
+        self.w1.brake()
+        self.w2.brake()
+        
+    def backward(self, dist_mm: float, speed: float = default_motor_speed):
+        rotations = dist_mm / (const(0.86602540378) * Drivetrain.w_circumference_mm)
+        self.normalize_speeds(speed, -speed, 0)
         time.sleep_ms(int(rotations/Drivetrain.motor_rotations_per_ms))
         self.w1.brake()
         self.w2.brake()

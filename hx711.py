@@ -3,8 +3,8 @@ import sys
 from time import sleep_ms
 from OTV_Lib import HX711
 
-CLK_PIN  = 14   # TX / GPIO 1
-DATA_PIN = 25   # GPIO 25
+CLK_PIN  = 27  # TX / GPIO 1
+DATA_PIN = 35   # GPIO 25
 
 
 
@@ -18,10 +18,13 @@ if __name__ == "__main__":
     scale.tare(20)
     print("Tare value: {}".format(scale.tareVal))
     
+    print("Place weight on scale, waiting 3 seconds...")
+    sleep_ms(3000)
+    
     calFactor = 0
     
     for i in range(0,10):
-        scale.calWeight(275)
+        scale.calWeight(276.1)
         calFactor += scale.calFactor()
 
     calFactor = calFactor/10
